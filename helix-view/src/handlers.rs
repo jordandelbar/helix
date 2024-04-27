@@ -73,8 +73,7 @@ pub fn register_hooks(handlers: &Handlers) {
     register_hook!(move |event: &mut ConfigDidChange<'_>| {
         event.editor.file_watcher.reload(&event.new.file_watcher);
         // Update extra watched paths from VCS providers (e.g., external HEAD files for worktrees)
-        let (workspace, _) = helix_loader::find_workspace();
-        let extra_paths = event.editor.diff_providers.get_watched_paths(&workspace);
+        let extra_paths = event.editor.diff_providers.get_watched_paths();
         event
             .editor
             .file_watcher
