@@ -127,7 +127,24 @@ impl DiffProviderRegistry {
             #[cfg(feature = "git")]
             PossibleDiffProvider::Git => self.add_file_git(repo_path, trust_full),
             #[cfg(feature = "jj")]
-            PossibleDiffProvider::JJ => self.add_file_jj(repo_path, trust_full),
+            PossibleDiffProvider::JJ => {
+                // A colocated repo has both .jj and .git, and .jj wins detection above. When jj
+                // registration fails we fall back to git instead of leaving the file with no
+                // diffs at all: the common cause is an untrusted workspace, which jj requires
+                // (it has no trust setting of its own) but git does not.
+                match self.add_file_jj(repo_path, trust_full) {
+                    Ok(registered) => Ok(registered),
+                    #[cfg(feature = "git")]
+                    Err(err) if repo_path.join(".git").try_exists().unwrap_or(false) => {
+                        log::debug!(
+                            "no jj provider at {} ({err:#}), falling back to git",
+                            repo_path.display()
+                        );
+                        self.add_file_git(repo_path, trust_full)
+                    }
+                    Err(err) => Err(err),
+                }
+            }
         };
 
         match result {
@@ -324,6 +341,8 @@ impl DiffProvider {
         match *self {
             #[cfg(feature = "git")]
             Self::Git { .. } => is_git_head_path(fs_event.path.as_std_path()),
+            #[cfg(feature = "jj")]
+            Self::JJ(_) => is_jj_op_log_path(fs_event.path.as_std_path()),
         }
     }
 
@@ -365,6 +384,14 @@ impl DiffProvider {
         match *self {
             #[cfg(feature = "git")]
             Self::Git { ref repo, .. } => git::get_head_path(repo),
+            // ponytail: jj's op log lives at <workspace>/.jj/repo/op_heads/heads, which is
+            // inside the workspace and so already covered by the main watcher (extra paths
+            // are filtered to out-of-workspace ones). The exception is `jj workspace add`,
+            // where .jj/repo is a file pointing at another directory: that op log is not
+            // watched, so diffs there refresh on focus rather than instantly. Resolve the
+            // indirection here if that ever matters.
+            #[cfg(feature = "jj")]
+            Self::JJ(_) => None,
         }
     }
 }
@@ -389,6 +416,17 @@ fn is_git_head_path(path: &Path) -> bool {
     }
 
     false
+}
+
+/// Should a change to this path invalidate the jj diff base?
+///
+/// A jj operation replaces an entry in `.jj/repo/op_heads/heads/`: the file *name* is the
+/// operation id, so every operation removes one entry and creates another. Any event in
+/// that directory means the working-copy commit may have moved.
+#[cfg(feature = "jj")]
+fn is_jj_op_log_path(path: &Path) -> bool {
+    path.parent()
+        .is_some_and(|parent| parent.ends_with(".jj/repo/op_heads/heads"))
 }
 
 #[cfg(test)]
