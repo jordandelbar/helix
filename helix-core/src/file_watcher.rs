@@ -550,6 +550,7 @@ fn is_hidden(path: &Path) -> bool {
         it.as_encoded_bytes().first() == Some(&b'.')
         // handled by vcs ignore rules
         && it != ".git"
+        && it != ".jj"
     })
 }
 
@@ -581,11 +582,40 @@ fn is_vcs_ignore(path: &Path, watch_vcs: bool) -> bool {
     {
         return true;
     }
+    if watch_vcs && is_jj_internal(path) {
+        return true;
+    }
     match file_name(path) {
-        Some(".jj" | ".svn" | ".hg") => true,
-        Some(".git") => !watch_vcs,
+        Some(".svn" | ".hg") => true,
+        Some(".git" | ".jj") => !watch_vcs,
         _ => false,
     }
+}
+
+/// The `.jj` counterpart of the `.git/HEAD` allowance above.
+///
+/// The file that marks a change is deeper than git's: a jj operation replaces an entry in
+/// `.jj/repo/op_heads/heads/`. So we allow descending exactly that chain and ignore every
+/// other child at each level, keeping the object store under `.jj/repo/store` (as large as
+/// `.git/objects`) out of the watcher.
+///
+/// Like the `.git` rule this only inspects the immediate parent; `ignore_path_rec` walks
+/// ancestors, so ignoring `.jj/repo/store` also ignores everything beneath it.
+fn is_jj_internal(path: &Path) -> bool {
+    // (directory, the single child of it we keep descending into)
+    const CHAIN: [(&str, &str); 3] = [
+        (".jj", ".jj/repo"),
+        (".jj/repo", ".jj/repo/op_heads"),
+        (".jj/repo/op_heads", ".jj/repo/op_heads/heads"),
+    ];
+
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+
+    CHAIN
+        .iter()
+        .any(|(dir, keep)| parent.ends_with(dir) && !path.ends_with(keep))
 }
 
 #[cfg(test)]
@@ -603,9 +633,34 @@ mod tests {
         // but it IS caught by ignore_path_rec which checks ancestors recursively
         assert!(!is_vcs_ignore(Path::new(".git/foo/bar"), true));
         assert!(!is_vcs_ignore(Path::new(".foo"), true));
-        assert!(is_vcs_ignore(Path::new(".jj"), true));
+        assert!(is_vcs_ignore(Path::new(".jj"), false));
         assert!(is_vcs_ignore(Path::new(".svn"), true));
         assert!(is_vcs_ignore(Path::new(".hg"), true));
+    }
+
+    #[test]
+    fn test_vcs_ignore_jj_op_log() {
+        // The chain down to the operation log heads stays watched...
+        assert!(!is_vcs_ignore(Path::new(".jj"), true));
+        assert!(!is_vcs_ignore(Path::new(".jj/repo"), true));
+        assert!(!is_vcs_ignore(Path::new(".jj/repo/op_heads"), true));
+        assert!(!is_vcs_ignore(Path::new(".jj/repo/op_heads/heads"), true));
+        assert!(!is_vcs_ignore(
+            Path::new(".jj/repo/op_heads/heads/839e62b3"),
+            true
+        ));
+
+        // ...and every sibling along it is ignored, so the store is never watched.
+        assert!(is_vcs_ignore(Path::new(".jj/working_copy"), true));
+        assert!(is_vcs_ignore(Path::new(".jj/repo/store"), true));
+        assert!(is_vcs_ignore(Path::new(".jj/repo/index"), true));
+        assert!(is_vcs_ignore(Path::new(".jj/repo/op_store"), true));
+
+        // Deeper entries are left to ignore_path_rec, exactly like .git/foo/bar above.
+        assert!(!is_vcs_ignore(Path::new(".jj/repo/store/git"), true));
+
+        // A repo-shaped path that isn't under .jj is untouched.
+        assert!(!is_vcs_ignore(Path::new("src/repo"), true));
     }
 
     #[test]
@@ -613,6 +668,7 @@ mod tests {
         assert!(is_hidden(Path::new(".foo")));
         // handled by vcs ignore rules
         assert!(!is_hidden(Path::new(".git")));
+        assert!(!is_hidden(Path::new(".jj")));
     }
 
     #[test]
