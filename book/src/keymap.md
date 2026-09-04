@@ -483,8 +483,8 @@ See the documentation page on [pickers](./pickers.md) for more info.
 | `Ctrl-t`                     | Toggle preview                                             |
 | `PageUp`                     | Scroll the preview up a page (page up the list when no preview is shown)   |
 | `PageDown`                   | Scroll the preview down a page (page down the list when no preview is shown) |
-| `Alt-k`, `Shift-Up`          | Scroll the preview up a line                              |
-| `Alt-j`, `Shift-Down`        | Scroll the preview down a line                            |
+| `Alt-k`, `Ctrl-k`, `Shift-Up`   | Scroll the preview up a line                           |
+| `Alt-j`, `Ctrl-j`, `Shift-Down` | Scroll the preview down a line                         |
 | `Escape`, `Ctrl-c`           | Close picker                                               |
 
 ## Prompt

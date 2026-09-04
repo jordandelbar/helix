@@ -1331,11 +1331,19 @@ impl<I: 'static + Send + Sync, D: 'static + Send + Sync> Component for Picker<I,
             // Preview line scrolling. Alt-d/f/b are intentionally avoided here: the prompt
             // keybinds (which also apply in pickers) use them for word editing in the
             // query, and full-page preview scrolling is already on PageUp/PageDown.
-            alt!('k') | shift!(Up) if self.preview_shown() => {
+            //
+            // Ctrl-k/Ctrl-j are the fallback for terminal multiplexers that swallow
+            // Alt-j/Alt-k for their own pane navigation. Ctrl-k shadows the prompt's
+            // kill-to-end-of-line, but only while a preview is shown, and only the way
+            // its mirror Ctrl-u (kill-to-start-of-line) is already shadowed by the
+            // result list's page up. Note Ctrl-j is byte-identical to Enter unless the
+            // terminal negotiates the keyboard enhancement protocol; where it does not,
+            // it opens the selection instead of scrolling.
+            alt!('k') | ctrl!('k') | shift!(Up) if self.preview_shown() => {
                 let lines = ctx.editor.config().scroll_lines.unsigned_abs() as isize;
                 self.scroll_preview(-lines);
             }
-            alt!('j') | shift!(Down) if self.preview_shown() => {
+            alt!('j') | ctrl!('j') | shift!(Down) if self.preview_shown() => {
                 let lines = ctx.editor.config().scroll_lines.unsigned_abs() as isize;
                 self.scroll_preview(lines);
             }
