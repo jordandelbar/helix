@@ -13,6 +13,16 @@ pub mod keymap;
 pub mod logging;
 pub mod ui;
 
+/// Warn when an exit-path step takes long enough for a user to notice it as a freeze.
+/// The exit blocks on jobs (format-on-save), pending writes and language server
+/// shutdown, so a stall in any of them shows up as "the editor hung on quit".
+pub fn log_if_slow(phase: &str, start: std::time::Instant) {
+    let elapsed = start.elapsed();
+    if elapsed > std::time::Duration::from_millis(500) {
+        log::warn!("slow exit: {phase} took {elapsed:.1?}");
+    }
+}
+
 #[cfg(not(windows))]
 use std::env::var_os;
 

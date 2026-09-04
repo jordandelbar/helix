@@ -1342,7 +1342,9 @@ impl Application {
 
         let close_errs = self.close().await;
 
+        let start = std::time::Instant::now();
         self.restore_term()?;
+        crate::log_if_slow("restore_term", start);
 
         for err in close_errs {
             self.editor.exit_code = 1;
@@ -1358,6 +1360,7 @@ impl Application {
         //        errors along the way
         let mut errs = Vec::new();
 
+        let start = std::time::Instant::now();
         if let Err(err) = self
             .jobs
             .finish(&mut self.editor, Some(&mut self.compositor))
@@ -1366,13 +1369,18 @@ impl Application {
             log::error!("Error executing job: {}", err);
             errs.push(err);
         };
+        crate::log_if_slow("jobs", start);
 
+        let start = std::time::Instant::now();
         if let Err(err) = self.editor.flush_writes().await {
             log::error!("Error writing: {}", err);
             errs.push(err);
         }
+        crate::log_if_slow("writes", start);
 
+        let start = std::time::Instant::now();
         self.editor.close_language_servers(None).await;
+        crate::log_if_slow("language server shutdown", start);
 
         errs
     }
