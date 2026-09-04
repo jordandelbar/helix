@@ -31,8 +31,13 @@ impl Context<'_> {
     /// Waits on all pending jobs, and then tries to flush all pending write
     /// operations for all documents.
     pub fn block_try_flush_writes(&mut self) -> anyhow::Result<()> {
+        let start = std::time::Instant::now();
         tokio::task::block_in_place(|| helix_lsp::block_on(self.jobs.finish(self.editor, None)))?;
+        crate::log_if_slow("jobs (blocking)", start);
+
+        let start = std::time::Instant::now();
         tokio::task::block_in_place(|| helix_lsp::block_on(self.editor.flush_writes()))?;
+        crate::log_if_slow("writes (blocking)", start);
         Ok(())
     }
 }
