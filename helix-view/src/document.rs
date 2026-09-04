@@ -2516,6 +2516,7 @@ pub enum FormatterError {
     WaitForOutputFailed,
     InvalidUtf8Output,
     NonZeroExitStatus(Option<String>),
+    TimedOut,
 }
 
 impl std::error::Error for FormatterError {}
@@ -2533,6 +2534,7 @@ impl Display for FormatterError {
             Self::NonZeroExitStatus(None) => {
                 write!(f, "Formatter exited with non zero exit status")
             }
+            Self::TimedOut => write!(f, "Formatting timed out"),
         }
     }
 }
