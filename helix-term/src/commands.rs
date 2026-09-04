@@ -3773,6 +3773,9 @@ fn insert_with_indent(cx: &mut Context, cursor_fallback: IndentFallbackPos) {
 //
 // TODO: provide some way to cancel this, probably as part of a more general job cancellation
 // scheme
+/// How long a save waits for formatting before writing the file unformatted.
+const FORMAT_ON_SAVE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
 async fn make_format_callback(
     doc_id: DocumentId,
     doc_version: i32,
@@ -3780,7 +3783,17 @@ async fn make_format_callback(
     format: impl Future<Output = Result<Transaction, FormatterError>> + Send + 'static,
     write: Option<(Option<PathBuf>, bool)>,
 ) -> anyhow::Result<job::Callback> {
-    let format = format.await;
+    // Format-on-save is waited on when exiting (`:wq` -> `jobs.finish`), which blocks
+    // the UI thread, so a server that never answers `textDocument/formatting` freezes
+    // the quit for its whole request timeout (20s by default). Cap the wait: past it
+    // the file is saved unformatted instead. `:format` on its own is not capped.
+    // ponytail: fixed cap, make it configurable if a formatter legitimately needs longer.
+    let format = match write {
+        Some(_) => tokio::time::timeout(FORMAT_ON_SAVE_TIMEOUT, format)
+            .await
+            .unwrap_or(Err(FormatterError::TimedOut)),
+        None => format.await,
+    };
 
     let call: job::Callback = Callback::Editor(Box::new(move |editor| {
         if !editor.documents.contains_key(&doc_id) || !editor.tree.contains(view_id) {
