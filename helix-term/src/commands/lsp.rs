@@ -763,7 +763,20 @@ fn code_action_on_save_step(
         };
 
         let future = async move {
-            let actions = request.await?;
+            // Quitting blocks on this chain, so a server that is still warming up must
+            // not hold the exit for its whole request timeout. Past the cap, skip this
+            // kind and carry on to the next one (and to the save).
+            let Ok(actions) =
+                tokio::time::timeout(crate::FORMAT_ON_SAVE_TIMEOUT, request).await
+            else {
+                log::warn!("code-actions-on-save: {kind:?} timed out");
+                let skip =
+                    move |_editor: &mut Editor| -> Option<Job> {
+                        code_action_on_save_step(doc_id, kinds, tail)
+                    };
+                return Ok(Callback::Followup(Box::new(skip)));
+            };
+            let actions = actions?;
             let resolve = move |editor: &mut Editor| -> Option<Job> {
                 resolve_and_apply_code_actions_of_kind(
                     editor, doc_id, version, ls_id, kind, kinds, tail, actions,
