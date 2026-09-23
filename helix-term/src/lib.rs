@@ -16,7 +16,13 @@ pub mod ui;
 /// How long a save waits for a language server (formatting, code actions on save)
 /// before writing the file without it. Quitting blocks on those jobs, so this is
 /// what bounds the freeze on `:wq`.
-pub const FORMAT_ON_SAVE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+///
+/// Measured round-trips on this machine: yaml-language-server 8ms on a k8s
+/// manifest, `helm lint` 19ms on a chart. A server silent past half a second is
+/// wedged or still indexing, not slow, so waiting longer only lengthens the
+/// freeze without changing the outcome. Was 3s, which is what `:wq` on a file
+/// held by a cold server actually cost.
+pub const FORMAT_ON_SAVE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// Warn when an exit-path step takes long enough for a user to notice it as a freeze.
 /// The exit blocks on jobs (format-on-save), pending writes and language server
