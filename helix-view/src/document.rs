@@ -958,6 +958,10 @@ impl Document {
             .language_servers_with_feature(LanguageServerFeature::Format)
             .next()?;
         let offset_encoding = language_server.offset_encoding();
+        // Named in the failure below: a timeout here is bounded by
+        // FORMAT_ON_SAVE_TIMEOUT and shows up as a freeze on `:wq`, so the log has
+        // to say which server went quiet.
+        let server_name = language_server.name().to_string();
         let request = language_server.text_document_formatting(
             self.identifier(),
             lsp::FormattingOptions {
@@ -972,7 +976,7 @@ impl Document {
             let edits = request
                 .await
                 .unwrap_or_else(|e| {
-                    log::warn!("LSP formatting failed: {}", e);
+                    log::warn!("LSP formatting failed ({server_name}): {e}");
                     Default::default()
                 })
                 .unwrap_or_default();
