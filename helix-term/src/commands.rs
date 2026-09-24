@@ -3817,7 +3817,25 @@ async fn make_format_callback(
                     editor.set_error(err.to_string());
                     return;
                 }
-                log::info!("failed to format '{}': {err}", doc.display_name());
+                // A timeout is the cap above firing, which drops the request future
+                // before `Document::format` can report it, so this is the only place
+                // left that knows which server went quiet. It is also exactly what a
+                // freeze on `:wq` looks like from the log, so it warns rather than
+                // informs.
+                if matches!(err, FormatterError::TimedOut) {
+                    let server = doc
+                        .language_servers_with_feature(LanguageServerFeature::Format)
+                        .next()
+                        .map(|ls| ls.name().to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    log::warn!(
+                        "format-on-save timed out after {:?} ({server}), saved '{}' unformatted",
+                        crate::FORMAT_ON_SAVE_TIMEOUT,
+                        doc.display_name()
+                    );
+                } else {
+                    log::info!("failed to format '{}': {err}", doc.display_name());
+                }
             }
         }
 
